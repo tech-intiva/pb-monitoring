@@ -183,10 +183,6 @@ export function Dashboard() {
       return;
     }
 
-    if (audioEvaluationRef.current === projectId) {
-      return;
-    }
-
     const projectDevicesList = Array.from(devices.values()).filter(
       (device) => device.projectId === projectId
     );
@@ -207,6 +203,12 @@ export function Dashboard() {
     if (alertDevices.length === 0) {
       return;
     }
+
+    console.log('[Dashboard] Dispatching audio evaluation', {
+      projectId,
+      alertDevices,
+      evaluationKey,
+    });
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(

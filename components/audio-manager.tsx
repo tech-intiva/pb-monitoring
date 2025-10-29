@@ -11,7 +11,6 @@ const SOUND_MAP: Record<string, string> = {
 
 export function AudioManager() {
   const muted = useUIStore((state) => state.muted);
-  const isAcked = useUIStore((state) => state.isAcked);
   const currentProjectId = useUIStore((state) => state.currentProjectId);
   const setAudioStatus = useUIStore((state) => state.setAudioStatus);
   const lastPlayedRef = useRef<number>(0);
@@ -26,16 +25,10 @@ export function AudioManager() {
   const [allUnlocked, setAllUnlocked] = useState(false);
 
   useEffect(() => {
-    // check if user has already interacted before
-    const hasInteracted = localStorage.getItem('audio-unlocked') === 'true';
-    hasInteractedRef.current = hasInteracted;
-
-    // show prompt immediately if user hasn't interacted before
-    if (!hasInteracted) {
-      setTimeout(() => {
-        setShowUnlockPrompt(true);
-      }, 500);
-    }
+    // show prompt once at the beginning
+    setTimeout(() => {
+      setShowUnlockPrompt(true);
+    }, 500);
   }, []);
 
   useEffect(() => {
@@ -61,6 +54,24 @@ export function AudioManager() {
         } else if (key === 'default') {
           setDefaultReady(true);
           setAudioStatus({ defaultReady: true });
+        }
+
+        // auto-unlock if user has already interacted
+        if (hasInteractedRef.current && !unlockedRef.current[key]) {
+          audio.muted = true;
+          audio.loop = false;
+          audio
+            .play()
+            .then(() => {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.muted = false;
+              unlockedRef.current[key] = true;
+              console.log(`[AudioManager] Audio "${key}" auto-unlocked after late load`);
+            })
+            .catch((err) => {
+              console.warn(`[AudioManager] Failed to auto-unlock "${key}"`, err);
+            });
         }
       };
 
@@ -130,7 +141,6 @@ export function AudioManager() {
     await Promise.all(unlockPromises);
 
     console.log('[AudioManager] All audio unlocked, hiding prompt');
-    localStorage.setItem('audio-unlocked', 'true');
     hasInteractedRef.current = true;
     setAllUnlocked(true);
     setShowUnlockPrompt(false);
@@ -186,36 +196,39 @@ export function AudioManager() {
       const customEvent = event as CustomEvent<{ projectId: string; deviceIps: string[] }>;
       const { projectId, deviceIps } = customEvent.detail;
 
+      // read current values from store to avoid closure staleness
+      const { currentProjectId: activeProjectId, muted: isMuted, isAcked: checkAcked } = useUIStore.getState();
+
       console.log('[AudioManager] Evaluate project audio', {
         eventProjectId: projectId,
-        currentProjectId,
+        activeProjectId,
         deviceIps
       });
 
-      if (!currentProjectId) {
+      if (!activeProjectId) {
         console.log('[AudioManager] No active project, skipping');
         return;
       }
 
-      if (projectId !== currentProjectId) {
+      if (projectId !== activeProjectId) {
         console.log('[AudioManager] Event project does not match active project, skipping', {
-          expected: currentProjectId,
+          expected: activeProjectId,
           received: projectId,
         });
         return;
       }
 
-      if (muted) {
+      if (isMuted) {
         console.log('[AudioManager] Audio is globally muted, skipping');
         return;
       }
 
-      if (isAcked(projectId)) {
+      if (checkAcked(projectId)) {
         console.log(`[AudioManager] Project ${projectId} is acknowledged, skipping`);
         return;
       }
 
-      const targetIp = (deviceIps || []).find((candidateIp) => !isAcked(candidateIp));
+      const targetIp = (deviceIps || []).find((candidateIp) => !checkAcked(candidateIp));
 
       if (!targetIp) {
         console.log('[AudioManager] No alerting device after ack filtering, skipping');
@@ -282,7 +295,7 @@ export function AudioManager() {
       console.log('[AudioManager] Unregistering project-audio-evaluate event listener');
       window.removeEventListener('project-audio-evaluate', handleProjectAudioEvaluate);
     };
-  }, [muted, isAcked, currentProjectId]);
+  }, []);
 
   const testSound = (projectIdOverride?: string) => {
     const targetProject = projectIdOverride ?? currentProjectId ?? 'default';
