@@ -389,7 +389,7 @@ export function AudioManager() {
           textShadow: '0 2px 20px rgba(0, 0, 0, 0.8)',
         }}
       >
-        Click anywhere to start
+        Click anywhere to start!!
       </p>
     </div>
   );
