@@ -48,7 +48,8 @@ export function Dashboard() {
   const [devices, setDevices] = useState<Map<string, DeviceState>>(new Map());
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const { clearExpiredAcks } = useUIStore();
+  const clearExpiredAcks = useUIStore((state) => state.clearExpiredAcks);
+  const setCurrentProjectId = useUIStore((state) => state.setCurrentProjectId);
 
   useEffect(() => {
     loadConfig().then(setConfig);
@@ -62,16 +63,37 @@ export function Dashboard() {
     return () => clearInterval(interval);
   }, [clearExpiredAcks]);
 
-  // auto-rotate carousel every 10 seconds
+  // ensure current slide stays in range if project list changes
+  const dispatchStopAudio = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('stop-audio'));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      config.projects.length > 0 &&
+      currentSlide >= config.projects.length
+    ) {
+      dispatchStopAudio();
+      setCurrentSlide(0);
+    }
+  }, [config.projects.length, currentSlide, dispatchStopAudio]);
+
+  // auto-rotate carousel every 60 seconds
   useEffect(() => {
     if (config.projects.length === 0) return;
 
     const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % config.projects.length);
-    }, 10000);
+      setCurrentSlide((prev) => {
+        const next = (prev + 1) % config.projects.length;
+        dispatchStopAudio();
+        return next;
+      });
+    }, 60000);
 
     return () => clearInterval(interval);
-  }, [config.projects.length]);
+  }, [config.projects.length, dispatchStopAudio]);
 
   const handleDeviceStatusChange = useCallback(
     (device: DeviceState) => {
@@ -109,17 +131,24 @@ export function Dashboard() {
       } else if (e.key === 'r') {
         window.location.reload();
       } else if (e.key === 'ArrowLeft') {
-        setCurrentSlide((prev) =>
-          prev === 0 ? config.projects.length - 1 : prev - 1
-        );
+        setCurrentSlide((prev) => {
+          const next =
+            prev === 0 ? config.projects.length - 1 : prev - 1;
+          dispatchStopAudio();
+          return next;
+        });
       } else if (e.key === 'ArrowRight') {
-        setCurrentSlide((prev) => (prev + 1) % config.projects.length);
+        setCurrentSlide((prev) => {
+          const next = (prev + 1) % config.projects.length;
+          dispatchStopAudio();
+          return next;
+        });
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [config.projects.length]);
+  }, [config.projects.length, dispatchStopAudio]);
 
   // group devices by project
   const projectDevices = new Map<string, DeviceState[]>();
@@ -130,6 +159,16 @@ export function Dashboard() {
   });
 
   const currentProject = config.projects[currentSlide];
+
+  useEffect(() => {
+    setCurrentProjectId(currentProject?.id ?? null);
+  }, [currentProject?.id, setCurrentProjectId]);
+
+  useEffect(() => {
+    return () => {
+      setCurrentProjectId(null);
+    };
+  }, [setCurrentProjectId]);
 
   return (
     <div
@@ -205,7 +244,10 @@ export function Dashboard() {
             {config.projects.map((project, index) => (
               <button
                 key={project.id}
-                onClick={() => setCurrentSlide(index)}
+                onClick={() => {
+                  dispatchStopAudio();
+                  setCurrentSlide(index);
+                }}
                 style={{
                   backgroundColor: index === currentSlide ? project.accent : undefined,
                   boxShadow: index === currentSlide ? `0 0 20px ${project.accent}80, 0 0 40px ${project.accent}40` : undefined,

@@ -1,101 +1,182 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useUIStore } from '@/lib/store';
 import { AUDIO_THROTTLE } from '@/lib/device-utils';
 
+const SOUND_MAP: Record<string, string> = {
+  cyclops: '/mixkit-city-alert-siren-loop-1008.wav',
+  default: '/mixkit-security-facility-breach-alarm-994.wav',
+};
+
 export function AudioManager() {
-  const { muted } = useUIStore();
+  const muted = useUIStore((state) => state.muted);
+  const isAcked = useUIStore((state) => state.isAcked);
+  const currentProjectId = useUIStore((state) => state.currentProjectId);
   const lastPlayedRef = useRef<number>(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
+  const readyMapRef = useRef<Record<string, boolean>>({});
   const pendingAlertsRef = useRef<Set<string>>(new Set());
-  const [audioReady, setAudioReady] = useState(false);
 
   useEffect(() => {
-    // create audio element with actual WAV file
-    const audio = new Audio();
+    const cleanupTasks: Array<() => void> = [];
+    const audioEntries = Object.entries(SOUND_MAP);
+    const refs: Record<string, HTMLAudioElement> = {};
+    const readyMap: Record<string, boolean> = {};
 
-    // use the alarm sound from public directory
-    audio.src = '/mixkit-facility-alarm-sound-999.wav';
-    audio.volume = 1.0;
-    audio.preload = 'auto';
+    audioEntries.forEach(([key, src]) => {
+      const audio = new Audio();
+      audio.src = src;
+      audio.volume = 1.0;
+      audio.preload = 'auto';
+      audio.load();
 
-    // load the audio
-    audio.load();
+      const handleReady = () => {
+        console.log(`[AudioManager] Audio "${key}" ready`);
+        readyMapRef.current = { ...readyMapRef.current, [key]: true };
+      };
 
-    audio.addEventListener('canplaythrough', () => {
-      console.log('[AudioManager] Audio loaded and ready');
-      setAudioReady(true);
-    });
+      const handleError = (event: Event) => {
+        console.error('[AudioManager] Audio loading error', {
+          key,
+          src,
+          event,
+          readyState: audio.readyState,
+          networkState: audio.networkState,
+        });
+      };
 
-    audio.addEventListener('error', (e) => {
-      console.error('[AudioManager] Audio loading error:', {
-        error: e,
-        src: audio.src,
-        readyState: audio.readyState,
-        networkState: audio.networkState,
+      audio.addEventListener('canplaythrough', handleReady);
+      audio.addEventListener('error', handleError);
+
+      cleanupTasks.push(() => {
+        audio.removeEventListener('canplaythrough', handleReady);
+        audio.removeEventListener('error', handleError);
+        audio.pause();
+        audio.src = '';
       });
+
+      refs[key] = audio;
+      readyMap[key] = false;
     });
 
-    audio.addEventListener('loadeddata', () => {
-      console.log('[AudioManager] Audio data loaded');
-    });
-
-    audioRef.current = audio;
+    audioRefs.current = refs;
+    readyMapRef.current = readyMap;
 
     return () => {
+      cleanupTasks.forEach((task) => task());
+      audioRefs.current = {};
+      readyMapRef.current = {};
+    };
+  }, []);
+
+  const stopAllAudio = () => {
+    Object.values(audioRefs.current).forEach((audio) => {
       audio.pause();
-      audio.src = '';
-      setAudioReady(false);
+      audio.currentTime = 0;
+    });
+  };
+
+  useEffect(() => {
+    const handleStopAudio = () => {
+      console.log('[AudioManager] stop-audio event received');
+      stopAllAudio();
+      pendingAlertsRef.current.clear();
+    };
+
+    window.addEventListener('stop-audio', handleStopAudio);
+    return () => {
+      window.removeEventListener('stop-audio', handleStopAudio);
     };
   }, []);
 
   useEffect(() => {
+    stopAllAudio();
+    pendingAlertsRef.current.clear();
+  }, [currentProjectId]);
+
+  useEffect(() => {
+    if (muted) {
+      stopAllAudio();
+    }
+  }, [muted]);
+
+  useEffect(() => {
     const handleDeviceError = (event: Event) => {
       const customEvent = event as CustomEvent<{ ip: string; projectId: string }>;
-      const { ip } = customEvent.detail;
+      const { ip, projectId } = customEvent.detail;
 
-      console.log(`[AudioManager] Received device-error event for ${ip}`);
+      console.log(`[AudioManager] Received device-error event for ${ip} (${projectId})`);
 
-      // check if muted
+      if (!currentProjectId) {
+        console.log('[AudioManager] No active project, skipping');
+        return;
+      }
+
+      if (projectId !== currentProjectId) {
+        console.log('[AudioManager] Event project does not match active project, skipping');
+        return;
+      }
+
       if (muted) {
         console.log('[AudioManager] Audio is globally muted, skipping');
         return;
       }
 
-      // check throttle - only play one sound every 30 seconds regardless of how many errors
+      if (isAcked(ip)) {
+        console.log(`[AudioManager] Device ${ip} is acknowledged, skipping`);
+        return;
+      }
+
+      if (isAcked(projectId)) {
+        console.log(`[AudioManager] Project ${projectId} is acknowledged, skipping`);
+        return;
+      }
+
       const now = Date.now();
       const timeSinceLastPlay = now - lastPlayedRef.current;
 
       if (timeSinceLastPlay < AUDIO_THROTTLE) {
-        console.log(`[AudioManager] Throttled - ${Math.round((AUDIO_THROTTLE - timeSinceLastPlay) / 1000)}s remaining`);
-        pendingAlertsRef.current.add(ip);
+        const remaining = Math.round((AUDIO_THROTTLE - timeSinceLastPlay) / 1000);
+        console.log(`[AudioManager] Throttled - ${remaining}s remaining`);
+        pendingAlertsRef.current.add(`${projectId}:${ip}`);
         return;
       }
 
-      // play sound
-      if (audioRef.current && audioReady) {
-        console.log('[AudioManager] Playing alert sound');
-        audioRef.current.currentTime = 0;
-        audioRef.current.play()
+      const isCyclopsProject = projectId.toLowerCase().includes('cyclops');
+      const soundKey = isCyclopsProject ? 'cyclops' : 'default';
+      const audio = audioRefs.current[soundKey];
+      const ready = readyMapRef.current[soundKey];
+
+      if (!audio) {
+        console.warn(`[AudioManager] No audio instance for key "${soundKey}"`);
+        return;
+      }
+
+      if (!ready) {
+        console.warn(`[AudioManager] Audio "${soundKey}" not ready yet`);
+        return;
+      }
+
+      try {
+        stopAllAudio();
+        audio.currentTime = 0;
+        audio.play()
           .then(() => {
-            console.log('[AudioManager] Sound played successfully');
+            console.log(`[AudioManager] Playing ${soundKey} alert`);
             lastPlayedRef.current = now;
             pendingAlertsRef.current.clear();
           })
           .catch((err) => {
-            console.error('[AudioManager] Failed to play audio:', err);
-            console.error('[AudioManager] Error details:', {
-              name: err.name,
-              message: err.message,
-              muted,
-              audioReady,
+            console.error('[AudioManager] Failed to play audio', {
+              soundKey,
+              error: err,
             });
           });
-      } else {
-        console.warn('[AudioManager] Audio not ready or ref is null', {
-          audioReady,
-          hasRef: !!audioRef.current,
+      } catch (error) {
+        console.error('[AudioManager] Unexpected error playing audio', {
+          soundKey,
+          error,
         });
       }
     };
@@ -107,28 +188,32 @@ export function AudioManager() {
       console.log('[AudioManager] Unregistering device-error event listener');
       window.removeEventListener('device-error', handleDeviceError);
     };
-  }, [muted, audioReady]);
+  }, [muted, isAcked, currentProjectId]);
 
-  // test button for debugging (only in development)
-  const testSound = () => {
-    if (audioRef.current && audioReady) {
-      console.log('[AudioManager] Manual test - playing sound');
-      audioRef.current.currentTime = 0;
-      audioRef.current.play()
-        .then(() => console.log('[AudioManager] Test sound played'))
+  const testSound = (projectIdOverride?: string) => {
+    const targetProject = projectIdOverride ?? currentProjectId ?? 'default';
+    const isCyclopsProject = targetProject.toLowerCase().includes('cyclops');
+    const soundKey = isCyclopsProject ? 'cyclops' : 'default';
+    const audio = audioRefs.current[soundKey];
+    const ready = readyMapRef.current[soundKey];
+
+    if (audio && ready) {
+      stopAllAudio();
+      audio.currentTime = 0;
+      audio.play()
+        .then(() => console.log(`[AudioManager] Test sound ${soundKey} played`))
         .catch((err) => console.error('[AudioManager] Test failed:', err));
     } else {
-      console.warn('[AudioManager] Audio not ready for test');
+      console.warn('[AudioManager] Audio not ready for test', { soundKey, ready });
     }
   };
 
-  // expose test function to window for console access
   useEffect(() => {
     (window as any).testAlertSound = testSound;
     return () => {
       delete (window as any).testAlertSound;
     };
-  }, [audioReady]);
+  }, [currentProjectId]);
 
   return null;
 }

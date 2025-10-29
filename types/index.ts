@@ -38,7 +38,9 @@ export interface AckState {
 export interface UIState {
   muted: boolean;
   acks: AckState;
+  currentProjectId: string | null;
   setMuted: (muted: boolean) => void;
+  setCurrentProjectId: (projectId: string | null) => void;
   ackDevice: (ip: string) => void;
   unackDevice: (ip: string) => void;
   ackProject: (projectId: string) => void;

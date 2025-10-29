@@ -9,8 +9,11 @@ export const useUIStore = create<UIState>()(
     (set, get) => ({
       muted: false,
       acks: {},
+      currentProjectId: null,
 
       setMuted: (muted: boolean) => set({ muted }),
+      setCurrentProjectId: (projectId: string | null) =>
+        set({ currentProjectId: projectId }),
 
       ackDevice: (ip: string) => {
         const expiry = Date.now() + ACK_DURATION;
