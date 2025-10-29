@@ -94,38 +94,39 @@ export function AudioManager() {
     };
   }, []);
 
-  const unlockAudio = useCallback(() => {
+  const unlockAudio = useCallback(async () => {
     const entries = Object.entries(audioRefs.current);
-    let unlockedCount = 0;
+    const unlockPromises: Promise<void>[] = [];
 
     entries.forEach(([key, audio]) => {
       if (unlockedRef.current[key] || !readyMapRef.current[key]) {
-        if (unlockedRef.current[key]) unlockedCount++;
         return;
       }
 
       audio.muted = true;
       audio.loop = false;
 
-      audio
+      const promise = audio
         .play()
         .then(() => {
           audio.pause();
           audio.currentTime = 0;
           audio.muted = false;
           unlockedRef.current[key] = true;
-          unlockedCount++;
           console.log(`[AudioManager] Audio "${key}" unlocked`);
-
-          if (unlockedCount === entries.length) {
-            setAllUnlocked(true);
-            setShowUnlockPrompt(false);
-          }
         })
         .catch((err) => {
           console.warn(`[AudioManager] Failed to unlock "${key}"`, err);
         });
+
+      unlockPromises.push(promise);
     });
+
+    await Promise.all(unlockPromises);
+
+    console.log('[AudioManager] All audio unlocked, hiding prompt');
+    setAllUnlocked(true);
+    setShowUnlockPrompt(false);
   }, []);
 
   useEffect(() => {
