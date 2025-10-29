@@ -29,6 +29,19 @@ export function DeviceCard({ device, onClick }: DeviceCardProps) {
   const { ackDevice, unackDevice, isAcked } = useUIStore();
   const isDeviceAcked = isAcked(device.ip);
 
+  const onlineTextColor = (() => {
+    switch (device.status) {
+      case 'OK':
+        return 'text-status-ok';
+      case 'WARN':
+        return 'text-status-warn';
+      case 'ERROR':
+        return 'text-status-error';
+      default:
+        return 'text-muted-foreground';
+    }
+  })();
+
   const handleMuteToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isDeviceAcked) {
@@ -71,7 +84,7 @@ export function DeviceCard({ device, onClick }: DeviceCardProps) {
           >
             <Card
               className={cn(
-                'min-w-[220px] min-h-[150px] border-2 transition-all duration-300 relative overflow-hidden',
+                'min-w-[200px] sm:min-w-[220px] min-h-[140px] sm:min-h-[150px] border-2 transition-all duration-300 relative overflow-hidden',
                 'backdrop-blur-sm bg-card/40',
                 statusColor,
                 'hover:scale-105 hover:shadow-2xl',
@@ -100,9 +113,9 @@ export function DeviceCard({ device, onClick }: DeviceCardProps) {
                 }}
               />
 
-              <CardContent className="p-5 flex flex-col justify-between h-full relative z-10">
+              <CardContent className="relative z-10 flex h-full flex-col justify-between p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="text-lg font-mono font-semibold truncate flex-1 tracking-wide">
+                  <div className="text-base font-mono font-semibold truncate flex-1 tracking-wide sm:text-lg">
                     {device.ip}
                   </div>
                   {isError && (
@@ -123,7 +136,7 @@ export function DeviceCard({ device, onClick }: DeviceCardProps) {
                 <div className="flex-1 flex items-center justify-center">
                   <div
                     className={cn(
-                      'text-5xl font-bold tabular-nums tracking-tight',
+                      'text-4xl font-bold tabular-nums tracking-tight sm:text-5xl',
                       statusColor
                     )}
                     style={{
@@ -134,17 +147,15 @@ export function DeviceCard({ device, onClick }: DeviceCardProps) {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-sm gap-2 mt-2">
-                  <span className="text-muted-foreground font-medium">
+                <div className="flex items-center justify-between gap-2 mt-2 text-xs sm:text-sm">
+                  <span className="font-medium text-muted-foreground">
                     {formatTimeAgo(device.lastChecked)}
                   </span>
 
                   <div className="flex items-center gap-2">
-                    {device.status === 'WARN' && (
-                      <span className="text-status-warn font-semibold text-xs">
-                        online: 0
-                      </span>
-                    )}
+                    <span className={cn('font-semibold text-xs', onlineTextColor)}>
+                      online: {device.totalOnline}
+                    </span>
                     {device.stale && (
                       <Badge
                         variant="outline"
