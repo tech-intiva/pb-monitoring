@@ -18,12 +18,25 @@ export function AudioManager() {
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
   const readyMapRef = useRef<Record<string, boolean>>({});
   const pendingAlertsRef = useRef<Set<string>>(new Set());
-  const stopTimersRef = useRef<Record<string, number>>({});
   const unlockedRef = useRef<Record<string, boolean>>({});
+  const hasInteractedRef = useRef(false);
   const [cyclopsReady, setCyclopsReady] = useState(false);
   const [defaultReady, setDefaultReady] = useState(false);
   const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
   const [allUnlocked, setAllUnlocked] = useState(false);
+
+  useEffect(() => {
+    // check if user has already interacted before
+    const hasInteracted = localStorage.getItem('audio-unlocked') === 'true';
+    hasInteractedRef.current = hasInteracted;
+
+    // show prompt immediately if user hasn't interacted before
+    if (!hasInteracted) {
+      setTimeout(() => {
+        setShowUnlockPrompt(true);
+      }, 500);
+    }
+  }, []);
 
   useEffect(() => {
     const cleanupTasks: Array<() => void> = [];
@@ -48,14 +61,6 @@ export function AudioManager() {
         } else if (key === 'default') {
           setDefaultReady(true);
           setAudioStatus({ defaultReady: true });
-        }
-
-        // show unlock prompt after a short delay when both are ready
-        const allReady = Object.values(readyMapRef.current).every((ready) => ready);
-        if (allReady) {
-          setTimeout(() => {
-            setShowUnlockPrompt(true);
-          }, 1000);
         }
       };
 
@@ -125,6 +130,8 @@ export function AudioManager() {
     await Promise.all(unlockPromises);
 
     console.log('[AudioManager] All audio unlocked, hiding prompt');
+    localStorage.setItem('audio-unlocked', 'true');
+    hasInteractedRef.current = true;
     setAllUnlocked(true);
     setShowUnlockPrompt(false);
   }, []);
@@ -147,10 +154,6 @@ export function AudioManager() {
       audio.pause();
       audio.currentTime = 0;
     });
-    Object.values(stopTimersRef.current).forEach((timerId) => {
-      clearTimeout(timerId);
-    });
-    stopTimersRef.current = {};
   };
 
   useEffect(() => {
@@ -248,22 +251,13 @@ export function AudioManager() {
         stopAllAudio();
         audio.currentTime = 0;
         audio.muted = false;
-        audio.loop = false;
+        audio.loop = true;
         audio.play()
           .then(() => {
-            console.log(`[AudioManager] Playing ${soundKey} alert for ${projectId}`);
+            console.log(`[AudioManager] Playing ${soundKey} alert for ${projectId} (looping until OK)`);
             lastPlayedRef.current = now;
             pendingAlertsRef.current.clear();
             setAudioStatus({ lastError: null });
-
-            if (stopTimersRef.current[soundKey]) {
-              clearTimeout(stopTimersRef.current[soundKey]);
-            }
-
-            stopTimersRef.current[soundKey] = window.setTimeout(() => {
-              audio.pause();
-              audio.currentTime = 0;
-            }, 8000);
           })
           .catch((err) => {
             console.error('[AudioManager] Failed to play audio', {

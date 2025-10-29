@@ -267,24 +267,6 @@ export function Dashboard() {
 
       <main className="relative z-10 flex flex-1 flex-col p-4 sm:p-6">
         <div className="flex flex-wrap justify-end gap-3 text-xs sm:text-sm text-muted-foreground">
-          <span
-            className={
-              audioStatus.cyclopsReady
-                ? 'text-status-ok'
-                : 'text-muted-foreground'
-            }
-          >
-            Cyclops audio {audioStatus.cyclopsReady ? 'ready' : 'loading…'}
-          </span>
-          <span
-            className={
-              audioStatus.defaultReady
-                ? 'text-status-ok'
-                : 'text-muted-foreground'
-            }
-          >
-            Default audio {audioStatus.defaultReady ? 'ready' : 'loading…'}
-          </span>
           {audioStatus.lastError && (
             <span className="text-status-warn">
               Audio warning: {audioStatus.lastError}
