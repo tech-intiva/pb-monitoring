@@ -1,8 +1,8 @@
-'use server';
+"use server";
 
-import { DeviceStatus, DeviceStatusResponse } from '@/types';
+import { DeviceStatus, DeviceStatusResponse } from "@/types";
 
-const REQUEST_TIMEOUT = 15000; // 15 seconds
+const REQUEST_TIMEOUT = 30000; // 30 seconds
 
 export async function fetchDeviceStatusFromDevice(ip: string): Promise<{
   status: DeviceStatus;
@@ -18,13 +18,13 @@ export async function fetchDeviceStatusFromDevice(ip: string): Promise<{
       `http://${ip}:8084/api/v1/adb-controller/status-all-devices`,
       {
         signal: controller.signal,
-        cache: 'no-store',
+        cache: "no-store",
       }
     );
 
     if (!response.ok) {
       return {
-        status: 'ERROR',
+        status: "ERROR",
         totalOnline: 0,
         lastChecked: Date.now(),
         error: `HTTP ${response.status}`,
@@ -35,11 +35,7 @@ export async function fetchDeviceStatusFromDevice(ip: string): Promise<{
     const totalOnline = data.data[data.data.length - 1]?.total_online ?? 0;
 
     const status: DeviceStatus =
-      totalOnline === 0
-        ? 'ERROR'
-        : totalOnline < 5
-        ? 'WARN'
-        : 'OK';
+      totalOnline === 0 ? "ERROR" : totalOnline < 5 ? "WARN" : "OK";
 
     return {
       status,
@@ -48,10 +44,10 @@ export async function fetchDeviceStatusFromDevice(ip: string): Promise<{
     };
   } catch (err) {
     return {
-      status: 'ERROR',
+      status: "ERROR",
       totalOnline: 0,
       lastChecked: Date.now(),
-      error: err instanceof Error ? err.message : 'Unknown error',
+      error: err instanceof Error ? err.message : "Unknown error",
     };
   } finally {
     clearTimeout(timeoutId);

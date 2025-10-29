@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useUIStore } from '@/lib/store';
 import { AUDIO_THROTTLE } from '@/lib/device-utils';
 
@@ -17,6 +17,8 @@ export function AudioManager() {
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
   const readyMapRef = useRef<Record<string, boolean>>({});
   const pendingAlertsRef = useRef<Set<string>>(new Set());
+  const [cyclopsReady, setCyclopsReady] = useState(false);
+  const [defaultReady, setDefaultReady] = useState(false);
 
   useEffect(() => {
     const cleanupTasks: Array<() => void> = [];
@@ -34,6 +36,29 @@ export function AudioManager() {
       const handleReady = () => {
         console.log(`[AudioManager] Audio "${key}" ready`);
         readyMapRef.current = { ...readyMapRef.current, [key]: true };
+
+        if (key === 'cyclops') {
+          setCyclopsReady(true);
+        } else if (key === 'default') {
+          setDefaultReady(true);
+        }
+
+        if (!audioRefs.current[key]) {
+          return;
+        }
+
+        audio
+          .play()
+          .then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+          })
+          .catch((err) => {
+            console.warn('[AudioManager] Autoplay unlock failed', {
+              key,
+              error: err,
+            });
+          });
       };
 
       const handleError = (event: Event) => {

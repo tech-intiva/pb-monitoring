@@ -259,13 +259,13 @@ export function Dashboard() {
       <main className="relative z-10 flex flex-1 flex-col p-4 sm:p-6">
         {config.projects.length === 0 && (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-xl">
-            Loading configuration...
+            Initialising configuration…
           </div>
         )}
 
         {config.projects.length > 0 && devices.size === 0 && (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-xl">
-            Connecting to devices...
+            Connecting to devices…
           </div>
         )}
 
