@@ -11,14 +11,14 @@ export function useDeviceStatus(ip: string, projectId: string) {
     queryKey: ['device', ip],
     queryFn: async (): Promise<DeviceState> => {
       const result = await fetchDeviceStatus(ip);
-      const now = Date.now();
+      const lastChecked = result.lastChecked;
 
       return {
         ip,
         projectId,
         status: result.status,
         totalOnline: result.totalOnline,
-        lastChecked: now,
+        lastChecked,
         error: result.error,
         stale: false,
       };

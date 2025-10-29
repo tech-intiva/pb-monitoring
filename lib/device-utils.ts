@@ -1,45 +1,43 @@
-import { DeviceStatus, DeviceStatusResponse } from '@/types';
+import { DeviceStatus } from '@/types';
 
 export const POLL_INTERVAL = 15000; // 15 seconds
-export const REQUEST_TIMEOUT = 15000; // 15 seconds
 export const STALE_THRESHOLD = 45000; // 45 seconds
 export const AUDIO_THROTTLE = 30000; // 30 seconds
 
 export async function fetchDeviceStatus(ip: string): Promise<{
   status: DeviceStatus;
   totalOnline: number;
+  lastChecked: number;
   error?: string;
 }> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-
     const response = await fetch(
-      `http://${ip}:8084/api/v1/adb-controller/status-all-devices`,
-      { signal: controller.signal }
+      `/api/device-status?ip=${encodeURIComponent(ip)}`,
+      { cache: 'no-store' }
     );
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       return {
         status: 'ERROR',
         totalOnline: 0,
+        lastChecked: Date.now(),
         error: `HTTP ${response.status}`,
       };
     }
 
-    const data: DeviceStatusResponse = await response.json();
-    const totalOnline = data.data[data.data.length - 1]?.total_online ?? 0;
+    const data = await response.json();
 
     return {
-      status: totalOnline > 0 ? 'OK' : 'WARN',
-      totalOnline,
+      status: data.status,
+      totalOnline: typeof data.totalOnline === 'number' ? data.totalOnline : 0,
+      lastChecked: data.lastChecked ?? Date.now(),
+      error: data.error,
     };
   } catch (err) {
     return {
       status: 'ERROR',
       totalOnline: 0,
+      lastChecked: Date.now(),
       error: err instanceof Error ? err.message : 'Unknown error',
     };
   }
