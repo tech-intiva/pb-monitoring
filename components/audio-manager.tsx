@@ -20,6 +20,7 @@ export function AudioManager() {
   const unlockedRef = useRef<Record<string, boolean>>({});
   const hasInteractedRef = useRef(false);
   const playingRef = useRef<string | null>(null);
+  const lastProjectRef = useRef<string | null>(null);
   const [cyclopsReady, setCyclopsReady] = useState(false);
   const [defaultReady, setDefaultReady] = useState(false);
   const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
@@ -252,6 +253,16 @@ export function AudioManager() {
       if (!targetIp) {
         console.log('[AudioManager] No alerting device after ack filtering, skipping');
         return;
+      }
+
+      // reset throttle when switching to a different project
+      if (lastProjectRef.current !== projectId) {
+        console.log('[AudioManager] New project detected, resetting throttle', {
+          oldProject: lastProjectRef.current,
+          newProject: projectId,
+        });
+        lastPlayedRef.current = 0;
+        lastProjectRef.current = projectId;
       }
 
       const now = Date.now();
