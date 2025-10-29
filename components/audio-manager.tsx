@@ -19,6 +19,7 @@ export function AudioManager() {
   const pendingAlertsRef = useRef<Set<string>>(new Set());
   const unlockedRef = useRef<Record<string, boolean>>({});
   const hasInteractedRef = useRef(false);
+  const playingRef = useRef<string | null>(null);
   const [cyclopsReady, setCyclopsReady] = useState(false);
   const [defaultReady, setDefaultReady] = useState(false);
   const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
@@ -159,18 +160,29 @@ export function AudioManager() {
     };
   }, [unlockAudio]);
 
-  const stopAllAudio = () => {
-    Object.values(audioRefs.current).forEach((audio) => {
+  const stopAllAudio = (force = false) => {
+    const playing = playingRef.current;
+    Object.entries(audioRefs.current).forEach(([key, audio]) => {
+      // don't stop audio that's currently being played unless forced
+      if (!force && key === playing) {
+        return;
+      }
       audio.pause();
       audio.currentTime = 0;
     });
+    if (force) {
+      playingRef.current = null;
+    }
   };
 
   useEffect(() => {
     const handleStopAudio = () => {
       console.log('[AudioManager] stop-audio event received');
-      stopAllAudio();
-      pendingAlertsRef.current.clear();
+      // defer stop to allow any immediately following play events to set playingRef first
+      setTimeout(() => {
+        stopAllAudio();
+        pendingAlertsRef.current.clear();
+      }, 50);
     };
 
     window.addEventListener('stop-audio', handleStopAudio);
@@ -180,14 +192,14 @@ export function AudioManager() {
   }, []);
 
   useEffect(() => {
-    stopAllAudio();
+    stopAllAudio(true);
     pendingAlertsRef.current.clear();
     setAudioStatus({ lastError: null });
   }, [currentProjectId]);
 
   useEffect(() => {
     if (muted) {
-      stopAllAudio();
+      stopAllAudio(true);
     }
   }, [muted]);
 
@@ -261,6 +273,9 @@ export function AudioManager() {
       }
 
       try {
+        // mark this audio as currently playing before any async operations
+        playingRef.current = soundKey;
+
         // stop only other audio, not the one we're about to play
         Object.entries(audioRefs.current).forEach(([key, otherAudio]) => {
           if (key !== soundKey) {
@@ -285,6 +300,7 @@ export function AudioManager() {
               soundKey,
               error: err,
             });
+            playingRef.current = null;
             setAudioStatus({ lastError: err?.message ?? 'Unable to play audio' });
           });
       } catch (error) {
@@ -292,6 +308,7 @@ export function AudioManager() {
           soundKey,
           error,
         });
+        playingRef.current = null;
         setAudioStatus({ lastError: error instanceof Error ? error.message : 'Unexpected audio error' });
       }
     };
