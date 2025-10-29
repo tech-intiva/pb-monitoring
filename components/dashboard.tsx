@@ -82,6 +82,7 @@ export function Dashboard() {
     const interval = setInterval(() => {
       setCurrentSlide((prev) => {
         const next = (prev + 1) % config.projects.length;
+        console.log('[Dashboard] Auto-rotate - changing slide', { prev, next });
         dispatchStopAudio();
         audioEvaluationRef.current = null;
         return next;
@@ -130,6 +131,7 @@ export function Dashboard() {
         setCurrentSlide((prev) => {
           const next =
             prev === 0 ? config.projects.length - 1 : prev - 1;
+          console.log('[Dashboard] Arrow left - changing slide', { prev, next });
           dispatchStopAudio();
           audioEvaluationRef.current = null;
           return next;
@@ -137,6 +139,7 @@ export function Dashboard() {
       } else if (e.key === 'ArrowRight') {
         setCurrentSlide((prev) => {
           const next = (prev + 1) % config.projects.length;
+          console.log('[Dashboard] Arrow right - changing slide', { prev, next });
           dispatchStopAudio();
           audioEvaluationRef.current = null;
           return next;
@@ -159,6 +162,11 @@ export function Dashboard() {
   const currentProject = config.projects[currentSlide];
 
   useLayoutEffect(() => {
+    console.log('[Dashboard] Setting currentProjectId', {
+      slide: currentSlide,
+      projectId: currentProject?.id ?? null,
+      projectName: currentProject?.name ?? 'none',
+    });
     setCurrentProjectId(currentProject?.id ?? null);
   }, [currentProject?.id, setCurrentProjectId]);
 

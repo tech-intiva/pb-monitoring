@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUIStore } from '@/lib/store';
 import { AUDIO_THROTTLE } from '@/lib/device-utils';
 
@@ -22,6 +22,8 @@ export function AudioManager() {
   const unlockedRef = useRef<Record<string, boolean>>({});
   const [cyclopsReady, setCyclopsReady] = useState(false);
   const [defaultReady, setDefaultReady] = useState(false);
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
+  const [allUnlocked, setAllUnlocked] = useState(false);
 
   useEffect(() => {
     const cleanupTasks: Array<() => void> = [];
@@ -46,6 +48,14 @@ export function AudioManager() {
         } else if (key === 'default') {
           setDefaultReady(true);
           setAudioStatus({ defaultReady: true });
+        }
+
+        // show unlock prompt after a short delay when both are ready
+        const allReady = Object.values(readyMapRef.current).every((ready) => ready);
+        if (allReady) {
+          setTimeout(() => {
+            setShowUnlockPrompt(true);
+          }, 1000);
         }
       };
 
@@ -84,33 +94,41 @@ export function AudioManager() {
     };
   }, []);
 
+  const unlockAudio = useCallback(() => {
+    const entries = Object.entries(audioRefs.current);
+    let unlockedCount = 0;
+
+    entries.forEach(([key, audio]) => {
+      if (unlockedRef.current[key] || !readyMapRef.current[key]) {
+        if (unlockedRef.current[key]) unlockedCount++;
+        return;
+      }
+
+      audio.muted = true;
+      audio.loop = false;
+
+      audio
+        .play()
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.muted = false;
+          unlockedRef.current[key] = true;
+          unlockedCount++;
+          console.log(`[AudioManager] Audio "${key}" unlocked`);
+
+          if (unlockedCount === entries.length) {
+            setAllUnlocked(true);
+            setShowUnlockPrompt(false);
+          }
+        })
+        .catch((err) => {
+          console.warn(`[AudioManager] Failed to unlock "${key}"`, err);
+        });
+    });
+  }, []);
+
   useEffect(() => {
-    const unlockAudio = () => {
-      const entries = Object.entries(audioRefs.current);
-
-      entries.forEach(([key, audio]) => {
-        if (unlockedRef.current[key] || !readyMapRef.current[key]) {
-          return;
-        }
-
-        audio.muted = true;
-        audio.loop = false;
-
-        audio
-          .play()
-          .then(() => {
-            audio.pause();
-            audio.currentTime = 0;
-            audio.muted = false;
-            unlockedRef.current[key] = true;
-            console.log(`[AudioManager] Audio "${key}" unlocked`);
-          })
-          .catch((err) => {
-            console.warn(`[AudioManager] Failed to unlock "${key}"`, err);
-          });
-      });
-    };
-
     const events = ['click', 'touchstart', 'keydown'];
     events.forEach((event) => {
       document.addEventListener(event, unlockAudio, { once: true });
@@ -121,7 +139,7 @@ export function AudioManager() {
         document.removeEventListener(event, unlockAudio);
       });
     };
-  }, []);
+  }, [unlockAudio]);
 
   const stopAllAudio = () => {
     Object.values(audioRefs.current).forEach((audio) => {
@@ -164,7 +182,11 @@ export function AudioManager() {
       const customEvent = event as CustomEvent<{ projectId: string; deviceIps: string[] }>;
       const { projectId, deviceIps } = customEvent.detail;
 
-      console.log('[AudioManager] Evaluate project audio', { projectId, deviceIps });
+      console.log('[AudioManager] Evaluate project audio', {
+        eventProjectId: projectId,
+        currentProjectId,
+        deviceIps
+      });
 
       if (!currentProjectId) {
         console.log('[AudioManager] No active project, skipping');
@@ -172,7 +194,10 @@ export function AudioManager() {
       }
 
       if (projectId !== currentProjectId) {
-        console.log('[AudioManager] Event project does not match active project, skipping');
+        console.log('[AudioManager] Event project does not match active project, skipping', {
+          expected: currentProjectId,
+          received: projectId,
+        });
         return;
       }
 
@@ -289,5 +314,58 @@ export function AudioManager() {
     };
   }, [currentProjectId]);
 
-  return null;
+  if (!showUnlockPrompt) {
+    return null;
+  }
+
+  return (
+    <div
+      onClick={unlockAudio}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        cursor: 'pointer',
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: '#1a1a1a',
+          border: '2px solid #fbbf24',
+          borderRadius: '12px',
+          padding: '32px 48px',
+          textAlign: 'center',
+          maxWidth: '400px',
+        }}
+      >
+        <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔊</div>
+        <h2 style={{ color: '#fbbf24', fontSize: '24px', marginBottom: '12px' }}>
+          Enable Audio Alerts
+        </h2>
+        <p style={{ color: '#9ca3af', fontSize: '16px', marginBottom: '24px' }}>
+          Click anywhere to enable audio notifications for device monitoring
+        </p>
+        <div
+          style={{
+            display: 'inline-block',
+            padding: '12px 32px',
+            backgroundColor: '#fbbf24',
+            color: '#000',
+            borderRadius: '8px',
+            fontWeight: 'bold',
+            fontSize: '16px',
+          }}
+        >
+          Enable Audio
+        </div>
+      </div>
+    </div>
+  );
 }
