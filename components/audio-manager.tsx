@@ -18,6 +18,7 @@ export function AudioManager() {
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
   const readyMapRef = useRef<Record<string, boolean>>({});
   const pendingAlertsRef = useRef<Set<string>>(new Set());
+  const stopTimersRef = useRef<Record<string, number>>({});
   const [cyclopsReady, setCyclopsReady] = useState(false);
   const [defaultReady, setDefaultReady] = useState(false);
 
@@ -51,6 +52,7 @@ export function AudioManager() {
         }
 
         audio.muted = true;
+        audio.loop = false;
 
         audio
           .play()
@@ -109,6 +111,10 @@ export function AudioManager() {
       audio.pause();
       audio.currentTime = 0;
     });
+    Object.values(stopTimersRef.current).forEach((timerId) => {
+      clearTimeout(timerId);
+    });
+    stopTimersRef.current = {};
   };
 
   useEffect(() => {
@@ -199,12 +205,22 @@ export function AudioManager() {
         stopAllAudio();
         audio.currentTime = 0;
         audio.muted = false;
+        audio.loop = false;
         audio.play()
           .then(() => {
             console.log(`[AudioManager] Playing ${soundKey} alert for ${projectId}`);
             lastPlayedRef.current = now;
             pendingAlertsRef.current.clear();
             setAudioStatus({ lastError: null });
+
+            if (stopTimersRef.current[soundKey]) {
+              clearTimeout(stopTimersRef.current[soundKey]);
+            }
+
+            stopTimersRef.current[soundKey] = window.setTimeout(() => {
+              audio.pause();
+              audio.currentTime = 0;
+            }, 8000);
           })
           .catch((err) => {
             console.error('[AudioManager] Failed to play audio', {
