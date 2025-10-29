@@ -1,0 +1,240 @@
+'use client';
+
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { MonitorConfig, DeviceState } from '@/types';
+import { ProjectSection } from './project-section';
+import { AudioManager } from './audio-manager';
+import { loadConfig } from '@/lib/config';
+import { useDeviceStatus, isStale } from '@/lib/hooks';
+import { useUIStore } from '@/lib/store';
+
+function DeviceMonitor({
+  ip,
+  projectId,
+  onStatusChange,
+}: {
+  ip: string;
+  projectId: string;
+  onStatusChange: (device: DeviceState) => void;
+}) {
+  const { data } = useDeviceStatus(ip, projectId);
+  const prevStatusRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (data) {
+      const deviceWithStale: DeviceState = {
+        ...data,
+        stale: isStale(data.lastChecked),
+      };
+
+      // notify parent of state change
+      onStatusChange(deviceWithStale);
+
+      // track status changes for audio alerts - trigger on ERROR or WARN
+      const prevStatus = prevStatusRef.current;
+      const currentStatus = deviceWithStale.status;
+
+      if (prevStatus && prevStatus !== currentStatus) {
+        // trigger alert when transitioning from OK to WARN or ERROR
+        // or from WARN to ERROR
+        const shouldAlert =
+          (prevStatus === 'OK' && (currentStatus === 'WARN' || currentStatus === 'ERROR')) ||
+          (prevStatus === 'WARN' && currentStatus === 'ERROR');
+
+        if (shouldAlert) {
+          console.log(`[AudioAlert] Device ${ip} status changed: ${prevStatus} -> ${currentStatus}`);
+          const event = new CustomEvent('device-error', {
+            detail: { ip, projectId },
+          });
+          window.dispatchEvent(event);
+        }
+      }
+
+      prevStatusRef.current = currentStatus;
+    }
+  }, [data, ip, projectId, onStatusChange]);
+
+  return null;
+}
+
+export function Dashboard() {
+  const [config, setConfig] = useState<MonitorConfig>({ projects: [] });
+  const [devices, setDevices] = useState<Map<string, DeviceState>>(new Map());
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const { clearExpiredAcks } = useUIStore();
+
+  useEffect(() => {
+    loadConfig().then(setConfig);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      clearExpiredAcks();
+    }, 60000); // clean up every minute
+
+    return () => clearInterval(interval);
+  }, [clearExpiredAcks]);
+
+  // auto-rotate carousel every 10 seconds
+  useEffect(() => {
+    if (config.projects.length === 0) return;
+
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % config.projects.length);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [config.projects.length]);
+
+  const handleDeviceStatusChange = useCallback(
+    (device: DeviceState) => {
+      setDevices((prev) => {
+        const next = new Map(prev);
+        next.set(device.ip, device);
+        return next;
+      });
+    },
+    []
+  );
+
+  // track fullscreen state
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'm') {
+        const { muted, setMuted } = useUIStore.getState();
+        setMuted(!muted);
+      } else if (e.key === 'f') {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen();
+        } else {
+          document.exitFullscreen();
+        }
+      } else if (e.key === 'r') {
+        window.location.reload();
+      } else if (e.key === 'ArrowLeft') {
+        setCurrentSlide((prev) =>
+          prev === 0 ? config.projects.length - 1 : prev - 1
+        );
+      } else if (e.key === 'ArrowRight') {
+        setCurrentSlide((prev) => (prev + 1) % config.projects.length);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [config.projects.length]);
+
+  // group devices by project
+  const projectDevices = new Map<string, DeviceState[]>();
+  devices.forEach((device) => {
+    const projectDevices_ = projectDevices.get(device.projectId) || [];
+    projectDevices_.push(device);
+    projectDevices.set(device.projectId, projectDevices_);
+  });
+
+  const currentProject = config.projects[currentSlide];
+
+  return (
+    <div
+      className="min-h-screen flex flex-col relative overflow-hidden"
+      style={{
+        background: currentProject
+          ? `radial-gradient(circle at 20% 20%, ${currentProject.accent}40 0%, transparent 40%),
+             radial-gradient(circle at 80% 80%, ${currentProject.accent}35 0%, transparent 40%),
+             radial-gradient(ellipse at 50% 0%, ${currentProject.accent}25 0%, transparent 50%),
+             radial-gradient(ellipse at 50% 100%, ${currentProject.accent}20 0%, transparent 50%),
+             linear-gradient(180deg, ${currentProject.accent}12 0%, #0b0f14 30%, #0b0f14 70%, ${currentProject.accent}12 100%)`
+          : '#0b0f14',
+      }}
+    >
+      {/* Strong accent gradient overlay */}
+      {currentProject && (
+        <>
+          <div
+            className="absolute inset-0 pointer-events-none opacity-40"
+            style={{
+              background: `linear-gradient(135deg, ${currentProject.accent}25 0%, transparent 30%, transparent 70%, ${currentProject.accent}20 100%)`,
+            }}
+          />
+          <div
+            className="absolute inset-0 pointer-events-none opacity-30"
+            style={{
+              background: `radial-gradient(ellipse at center, transparent 30%, ${currentProject.accent}15 100%)`,
+            }}
+          />
+        </>
+      )}
+
+      <AudioManager />
+
+      {/* Hidden monitors for all devices */}
+      {config.projects.map((project) =>
+        project.hosts.map((host) => (
+          <DeviceMonitor
+            key={host.ip}
+            ip={host.ip}
+            projectId={project.id}
+            onStatusChange={handleDeviceStatusChange}
+          />
+        ))
+      )}
+
+      <main className="flex-1 flex flex-col p-6 relative z-10">
+        {config.projects.length === 0 && (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground text-xl">
+            Loading configuration...
+          </div>
+        )}
+
+        {config.projects.length > 0 && devices.size === 0 && (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground text-xl">
+            Connecting to devices...
+          </div>
+        )}
+
+        {currentProject && projectDevices.get(currentProject.id) && (
+          <div className="flex-1 flex flex-col">
+            <ProjectSection
+              project={currentProject}
+              devices={projectDevices.get(currentProject.id)!}
+              isFullscreen={isFullscreen}
+            />
+          </div>
+        )}
+
+        {/* Navigation dots */}
+        {config.projects.length > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-6">
+            {config.projects.map((project, index) => (
+              <button
+                key={project.id}
+                onClick={() => setCurrentSlide(index)}
+                style={{
+                  backgroundColor: index === currentSlide ? project.accent : undefined,
+                  boxShadow: index === currentSlide ? `0 0 20px ${project.accent}80, 0 0 40px ${project.accent}40` : undefined,
+                }}
+                className={`h-4 rounded-full transition-all ${
+                  index === currentSlide
+                    ? 'w-12 opacity-100'
+                    : 'w-4 bg-muted/50 hover:bg-muted-foreground'
+                }`}
+                aria-label={`Go to ${project.name}`}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
