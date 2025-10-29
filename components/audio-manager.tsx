@@ -180,9 +180,14 @@ export function AudioManager() {
       console.log('[AudioManager] stop-audio event received');
       // defer stop to allow any immediately following play events to set playingRef first
       setTimeout(() => {
-        stopAllAudio();
+        // if no new audio started in this window, force stop everything
+        if (!playingRef.current) {
+          stopAllAudio(true);
+        } else {
+          stopAllAudio();
+        }
         pendingAlertsRef.current.clear();
-      }, 50);
+      }, 100);
     };
 
     window.addEventListener('stop-audio', handleStopAudio);
@@ -193,7 +198,8 @@ export function AudioManager() {
 
   useEffect(() => {
     // don't stop audio here - the stop-audio event handles that
-    // this effect just clears state when project changes
+    // reset throttle so new project can play immediately
+    lastPlayedRef.current = 0;
     pendingAlertsRef.current.clear();
     setAudioStatus({ lastError: null });
   }, [currentProjectId]);
@@ -295,6 +301,11 @@ export function AudioManager() {
             lastPlayedRef.current = now;
             pendingAlertsRef.current.clear();
             setAudioStatus({ lastError: null });
+
+            // clear playing protection after stop-audio window passes
+            setTimeout(() => {
+              playingRef.current = null;
+            }, 150);
           })
           .catch((err) => {
             console.error('[AudioManager] Failed to play audio', {
@@ -361,44 +372,96 @@ export function AudioManager() {
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 9999,
         cursor: 'pointer',
+        animation: 'fadeIn 0.3s ease-in-out',
       }}
     >
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideUp {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
       <div
         style={{
-          backgroundColor: '#1a1a1a',
-          border: '2px solid #fbbf24',
-          borderRadius: '12px',
-          padding: '32px 48px',
+          background: 'rgba(26, 26, 26, 0.95)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '1px solid rgba(251, 191, 36, 0.3)',
+          borderRadius: '24px',
+          padding: '48px 64px',
           textAlign: 'center',
-          maxWidth: '400px',
+          maxWidth: '480px',
+          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5), 0 0 100px rgba(251, 191, 36, 0.1)',
+          animation: 'slideUp 0.4s ease-out',
         }}
       >
-        <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔊</div>
-        <h2 style={{ color: '#fbbf24', fontSize: '24px', marginBottom: '12px' }}>
+        <div
+          style={{
+            fontSize: '64px',
+            marginBottom: '24px',
+            filter: 'drop-shadow(0 0 20px rgba(251, 191, 36, 0.3))',
+          }}
+        >
+          🔊
+        </div>
+        <h2
+          style={{
+            color: '#fbbf24',
+            fontSize: '28px',
+            marginBottom: '16px',
+            fontWeight: '600',
+            letterSpacing: '-0.5px',
+          }}
+        >
           Enable Audio Alerts
         </h2>
-        <p style={{ color: '#9ca3af', fontSize: '16px', marginBottom: '24px' }}>
-          Click anywhere to enable audio notifications for device monitoring
+        <p
+          style={{
+            color: '#d1d5db',
+            fontSize: '16px',
+            marginBottom: '32px',
+            lineHeight: '1.6',
+          }}
+        >
+          Audio notifications will alert you when device issues are detected
         </p>
         <div
           style={{
             display: 'inline-block',
-            padding: '12px 32px',
-            backgroundColor: '#fbbf24',
+            padding: '14px 36px',
+            background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
             color: '#000',
-            borderRadius: '8px',
-            fontWeight: 'bold',
+            borderRadius: '12px',
+            fontWeight: '600',
             fontSize: '16px',
+            boxShadow: '0 4px 20px rgba(251, 191, 36, 0.4)',
+            marginBottom: '24px',
           }}
         >
           Enable Audio
         </div>
+        <p
+          style={{
+            color: '#6b7280',
+            fontSize: '14px',
+            marginTop: '24px',
+            fontStyle: 'italic',
+          }}
+        >
+          Click anywhere to continue
+        </p>
       </div>
     </div>
   );
