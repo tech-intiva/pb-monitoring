@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { MonitorConfig, DeviceState } from '@/types';
 import { ProjectSection } from './project-section';
 import { AudioManager } from './audio-manager';
@@ -157,7 +157,7 @@ export function Dashboard() {
 
   const currentProject = config.projects[currentSlide];
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setCurrentProjectId(currentProject?.id ?? null);
   }, [currentProject?.id, setCurrentProjectId]);
 
@@ -186,7 +186,18 @@ export function Dashboard() {
       .filter((device) => device.status === 'WARN' || device.status === 'ERROR')
       .map((device) => device.ip);
 
-    audioEvaluationRef.current = projectId;
+    const alertSignature = alertDevices.slice().sort().join('|');
+    const evaluationKey = `${projectId}:${alertSignature}`;
+
+    if (audioEvaluationRef.current === evaluationKey) {
+      return;
+    }
+
+    audioEvaluationRef.current = evaluationKey;
+
+    if (alertDevices.length === 0) {
+      return;
+    }
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
