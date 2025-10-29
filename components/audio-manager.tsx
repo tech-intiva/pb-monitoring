@@ -192,7 +192,8 @@ export function AudioManager() {
   }, []);
 
   useEffect(() => {
-    stopAllAudio(true);
+    // don't stop audio here - the stop-audio event handles that
+    // this effect just clears state when project changes
     pendingAlertsRef.current.clear();
     setAudioStatus({ lastError: null });
   }, [currentProjectId]);
