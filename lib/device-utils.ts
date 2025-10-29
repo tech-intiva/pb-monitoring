@@ -1,7 +1,7 @@
 import { DeviceStatus } from '@/types';
 
-export const POLL_INTERVAL = 15000; // 15 seconds
-export const STALE_THRESHOLD = 45000; // 45 seconds
+export const POLL_INTERVAL = 60000; // 60 seconds
+export const STALE_THRESHOLD = 120000; // 120 seconds
 export const AUDIO_THROTTLE = 30000; // 30 seconds
 
 export async function fetchDeviceStatus(ip: string): Promise<{
