@@ -19,6 +19,7 @@ export function AudioManager() {
   const readyMapRef = useRef<Record<string, boolean>>({});
   const pendingAlertsRef = useRef<Set<string>>(new Set());
   const stopTimersRef = useRef<Record<string, number>>({});
+  const unlockedRef = useRef<Record<string, boolean>>({});
   const [cyclopsReady, setCyclopsReady] = useState(false);
   const [defaultReady, setDefaultReady] = useState(false);
 
@@ -46,29 +47,6 @@ export function AudioManager() {
           setDefaultReady(true);
           setAudioStatus({ defaultReady: true });
         }
-
-        if (!audioRefs.current[key]) {
-          return;
-        }
-
-        audio.muted = true;
-        audio.loop = false;
-
-        audio
-          .play()
-          .then(() => {
-            audio.pause();
-            audio.currentTime = 0;
-            audio.muted = false;
-          })
-          .catch((err) => {
-            console.warn('[AudioManager] Autoplay unlock failed', {
-              key,
-              error: err,
-            });
-            audio.muted = false;
-            setAudioStatus({ lastError: err?.message ?? 'Audio unlock blocked' });
-          });
       };
 
       const handleError = (event: Event) => {
@@ -103,6 +81,45 @@ export function AudioManager() {
       cleanupTasks.forEach((task) => task());
       audioRefs.current = {};
       readyMapRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      const entries = Object.entries(audioRefs.current);
+
+      entries.forEach(([key, audio]) => {
+        if (unlockedRef.current[key] || !readyMapRef.current[key]) {
+          return;
+        }
+
+        audio.muted = true;
+        audio.loop = false;
+
+        audio
+          .play()
+          .then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.muted = false;
+            unlockedRef.current[key] = true;
+            console.log(`[AudioManager] Audio "${key}" unlocked`);
+          })
+          .catch((err) => {
+            console.warn(`[AudioManager] Failed to unlock "${key}"`, err);
+          });
+      });
+    };
+
+    const events = ['click', 'touchstart', 'keydown'];
+    events.forEach((event) => {
+      document.addEventListener(event, unlockAudio, { once: true });
+    });
+
+    return () => {
+      events.forEach((event) => {
+        document.removeEventListener(event, unlockAudio);
+      });
     };
   }, []);
 
