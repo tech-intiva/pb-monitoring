@@ -261,10 +261,18 @@ export function AudioManager() {
       }
 
       try {
-        stopAllAudio();
+        // stop only other audio, not the one we're about to play
+        Object.entries(audioRefs.current).forEach(([key, otherAudio]) => {
+          if (key !== soundKey) {
+            otherAudio.pause();
+            otherAudio.currentTime = 0;
+          }
+        });
+
         audio.currentTime = 0;
         audio.muted = false;
         audio.loop = true;
+
         audio.play()
           .then(() => {
             console.log(`[AudioManager] Playing ${soundKey} alert for ${projectId} (looping until OK)`);
