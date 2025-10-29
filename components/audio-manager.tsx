@@ -13,6 +13,7 @@ export function AudioManager() {
   const muted = useUIStore((state) => state.muted);
   const isAcked = useUIStore((state) => state.isAcked);
   const currentProjectId = useUIStore((state) => state.currentProjectId);
+  const setAudioStatus = useUIStore((state) => state.setAudioStatus);
   const lastPlayedRef = useRef<number>(0);
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
   const readyMapRef = useRef<Record<string, boolean>>({});
@@ -39,25 +40,32 @@ export function AudioManager() {
 
         if (key === 'cyclops') {
           setCyclopsReady(true);
+          setAudioStatus({ cyclopsReady: true });
         } else if (key === 'default') {
           setDefaultReady(true);
+          setAudioStatus({ defaultReady: true });
         }
 
         if (!audioRefs.current[key]) {
           return;
         }
 
+        audio.muted = true;
+
         audio
           .play()
           .then(() => {
             audio.pause();
             audio.currentTime = 0;
+            audio.muted = false;
           })
           .catch((err) => {
             console.warn('[AudioManager] Autoplay unlock failed', {
               key,
               error: err,
             });
+            audio.muted = false;
+            setAudioStatus({ lastError: err?.message ?? 'Audio unlock blocked' });
           });
       };
 
@@ -69,6 +77,7 @@ export function AudioManager() {
           readyState: audio.readyState,
           networkState: audio.networkState,
         });
+        setAudioStatus({ lastError: `Failed to load ${key} audio` });
       };
 
       audio.addEventListener('canplaythrough', handleReady);
@@ -118,6 +127,7 @@ export function AudioManager() {
   useEffect(() => {
     stopAllAudio();
     pendingAlertsRef.current.clear();
+    setAudioStatus({ lastError: null });
   }, [currentProjectId]);
 
   useEffect(() => {
@@ -188,23 +198,27 @@ export function AudioManager() {
       try {
         stopAllAudio();
         audio.currentTime = 0;
+        audio.muted = false;
         audio.play()
           .then(() => {
             console.log(`[AudioManager] Playing ${soundKey} alert for ${projectId}`);
             lastPlayedRef.current = now;
             pendingAlertsRef.current.clear();
+            setAudioStatus({ lastError: null });
           })
           .catch((err) => {
             console.error('[AudioManager] Failed to play audio', {
               soundKey,
               error: err,
             });
+            setAudioStatus({ lastError: err?.message ?? 'Unable to play audio' });
           });
       } catch (error) {
         console.error('[AudioManager] Unexpected error playing audio', {
           soundKey,
           error,
         });
+        setAudioStatus({ lastError: error instanceof Error ? error.message : 'Unexpected audio error' });
       }
     };
 

@@ -39,8 +39,14 @@ export interface UIState {
   muted: boolean;
   acks: AckState;
   currentProjectId: string | null;
+  audioStatus: {
+    cyclopsReady: boolean;
+    defaultReady: boolean;
+    lastError: string | null;
+  };
   setMuted: (muted: boolean) => void;
   setCurrentProjectId: (projectId: string | null) => void;
+  setAudioStatus: (status: Partial<UIState['audioStatus']>) => void;
   ackDevice: (ip: string) => void;
   unackDevice: (ip: string) => void;
   ackProject: (projectId: string) => void;

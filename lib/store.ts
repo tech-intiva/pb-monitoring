@@ -10,10 +10,22 @@ export const useUIStore = create<UIState>()(
       muted: false,
       acks: {},
       currentProjectId: null,
+      audioStatus: {
+        cyclopsReady: false,
+        defaultReady: false,
+        lastError: null,
+      },
 
       setMuted: (muted: boolean) => set({ muted }),
       setCurrentProjectId: (projectId: string | null) =>
         set({ currentProjectId: projectId }),
+      setAudioStatus: (status) =>
+        set((state) => ({
+          audioStatus: {
+            ...state.audioStatus,
+            ...status,
+          },
+        })),
 
       ackDevice: (ip: string) => {
         const expiry = Date.now() + ACK_DURATION;
