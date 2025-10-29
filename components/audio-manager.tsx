@@ -5,7 +5,7 @@ import { useUIStore } from '@/lib/store';
 import { AUDIO_THROTTLE } from '@/lib/device-utils';
 
 export function AudioManager() {
-  const { muted, isAcked } = useUIStore();
+  const { muted } = useUIStore();
   const lastPlayedRef = useRef<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pendingAlertsRef = useRef<Set<string>>(new Set());
@@ -53,23 +53,13 @@ export function AudioManager() {
   useEffect(() => {
     const handleDeviceError = (event: Event) => {
       const customEvent = event as CustomEvent<{ ip: string; projectId: string }>;
-      const { ip, projectId } = customEvent.detail;
+      const { ip } = customEvent.detail;
 
       console.log(`[AudioManager] Received device-error event for ${ip}`);
 
-      // check if muted or acked
+      // check if muted
       if (muted) {
         console.log('[AudioManager] Audio is globally muted, skipping');
-        return;
-      }
-
-      if (isAcked(ip)) {
-        console.log(`[AudioManager] Device ${ip} is acknowledged, skipping`);
-        return;
-      }
-
-      if (isAcked(projectId)) {
-        console.log(`[AudioManager] Project ${projectId} is acknowledged, skipping`);
         return;
       }
 
@@ -117,7 +107,7 @@ export function AudioManager() {
       console.log('[AudioManager] Unregistering device-error event listener');
       window.removeEventListener('device-error', handleDeviceError);
     };
-  }, [muted, isAcked, audioReady]);
+  }, [muted, audioReady]);
 
   // test button for debugging (only in development)
   const testSound = () => {

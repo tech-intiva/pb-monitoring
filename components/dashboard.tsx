@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { MonitorConfig, DeviceState } from '@/types';
 import { ProjectSection } from './project-section';
 import { AudioManager } from './audio-manager';
@@ -18,7 +18,6 @@ function DeviceMonitor({
   onStatusChange: (device: DeviceState) => void;
 }) {
   const { data } = useDeviceStatus(ip, projectId);
-  const prevStatusRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (data) {
@@ -30,27 +29,14 @@ function DeviceMonitor({
       // notify parent of state change
       onStatusChange(deviceWithStale);
 
-      // track status changes for audio alerts - trigger on ERROR or WARN
-      const prevStatus = prevStatusRef.current;
       const currentStatus = deviceWithStale.status;
-
-      if (prevStatus && prevStatus !== currentStatus) {
-        // trigger alert when transitioning from OK to WARN or ERROR
-        // or from WARN to ERROR
-        const shouldAlert =
-          (prevStatus === 'OK' && (currentStatus === 'WARN' || currentStatus === 'ERROR')) ||
-          (prevStatus === 'WARN' && currentStatus === 'ERROR');
-
-        if (shouldAlert) {
-          console.log(`[AudioAlert] Device ${ip} status changed: ${prevStatus} -> ${currentStatus}`);
-          const event = new CustomEvent('device-error', {
-            detail: { ip, projectId },
-          });
-          window.dispatchEvent(event);
-        }
+      if (currentStatus === 'WARN' || currentStatus === 'ERROR') {
+        console.log(`[AudioAlert] Device ${ip} status ${currentStatus}`);
+        const event = new CustomEvent('device-error', {
+          detail: { ip, projectId },
+        });
+        window.dispatchEvent(event);
       }
-
-      prevStatusRef.current = currentStatus;
     }
   }, [data, ip, projectId, onStatusChange]);
 
