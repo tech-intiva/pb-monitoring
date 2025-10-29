@@ -34,8 +34,15 @@ export async function fetchDeviceStatusFromDevice(ip: string): Promise<{
     const data: DeviceStatusResponse = await response.json();
     const totalOnline = data.data[data.data.length - 1]?.total_online ?? 0;
 
+    const status: DeviceStatus =
+      totalOnline === 0
+        ? 'ERROR'
+        : totalOnline < 5
+        ? 'WARN'
+        : 'OK';
+
     return {
-      status: totalOnline > 0 ? 'OK' : 'WARN',
+      status,
       totalOnline,
       lastChecked: Date.now(),
     };
@@ -50,4 +57,3 @@ export async function fetchDeviceStatusFromDevice(ip: string): Promise<{
     clearTimeout(timeoutId);
   }
 }
-

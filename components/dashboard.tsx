@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { MonitorConfig, DeviceState } from '@/types';
 import { ProjectSection } from './project-section';
 import { AudioManager } from './audio-manager';
@@ -29,14 +29,6 @@ function DeviceMonitor({
       // notify parent of state change
       onStatusChange(deviceWithStale);
 
-      const currentStatus = deviceWithStale.status;
-      if (currentStatus === 'WARN' || currentStatus === 'ERROR') {
-        console.log(`[AudioAlert] Device ${ip} status ${currentStatus}`);
-        const event = new CustomEvent('device-error', {
-          detail: { ip, projectId },
-        });
-        window.dispatchEvent(event);
-      }
     }
   }, [data, ip, projectId, onStatusChange]);
 
@@ -50,6 +42,7 @@ export function Dashboard() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const clearExpiredAcks = useUIStore((state) => state.clearExpiredAcks);
   const setCurrentProjectId = useUIStore((state) => state.setCurrentProjectId);
+  const audioEvaluationRef = useRef<string | null>(null);
 
   useEffect(() => {
     loadConfig().then(setConfig);
@@ -76,6 +69,7 @@ export function Dashboard() {
       currentSlide >= config.projects.length
     ) {
       dispatchStopAudio();
+      audioEvaluationRef.current = null;
       setCurrentSlide(0);
     }
   }, [config.projects.length, currentSlide, dispatchStopAudio]);
@@ -88,6 +82,7 @@ export function Dashboard() {
       setCurrentSlide((prev) => {
         const next = (prev + 1) % config.projects.length;
         dispatchStopAudio();
+        audioEvaluationRef.current = null;
         return next;
       });
     }, 60000);
@@ -135,12 +130,14 @@ export function Dashboard() {
           const next =
             prev === 0 ? config.projects.length - 1 : prev - 1;
           dispatchStopAudio();
+          audioEvaluationRef.current = null;
           return next;
         });
       } else if (e.key === 'ArrowRight') {
         setCurrentSlide((prev) => {
           const next = (prev + 1) % config.projects.length;
           dispatchStopAudio();
+          audioEvaluationRef.current = null;
           return next;
         });
       }
@@ -169,6 +166,39 @@ export function Dashboard() {
       setCurrentProjectId(null);
     };
   }, [setCurrentProjectId]);
+
+  useEffect(() => {
+    const projectId = currentProject?.id;
+    if (!projectId) {
+      audioEvaluationRef.current = null;
+      return;
+    }
+
+    if (audioEvaluationRef.current === projectId) {
+      return;
+    }
+
+    const projectDevicesList = Array.from(devices.values()).filter(
+      (device) => device.projectId === projectId
+    );
+
+    const alertDevices = projectDevicesList
+      .filter((device) => device.status === 'WARN' || device.status === 'ERROR')
+      .map((device) => device.ip);
+
+    audioEvaluationRef.current = projectId;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('project-audio-evaluate', {
+          detail: {
+            projectId,
+            deviceIps: alertDevices,
+          },
+        })
+      );
+    }
+  }, [currentProject?.id, devices]);
 
   return (
     <div
@@ -228,11 +258,11 @@ export function Dashboard() {
           </div>
         )}
 
-        {currentProject && projectDevices.get(currentProject.id) && (
+        {currentProject && (
           <div className="flex-1 flex flex-col">
             <ProjectSection
               project={currentProject}
-              devices={projectDevices.get(currentProject.id)!}
+              devices={projectDevices.get(currentProject.id) ?? []}
               isFullscreen={isFullscreen}
             />
           </div>
@@ -246,6 +276,7 @@ export function Dashboard() {
                 key={project.id}
                 onClick={() => {
                   dispatchStopAudio();
+                  audioEvaluationRef.current = null;
                   setCurrentSlide(index);
                 }}
                 style={{

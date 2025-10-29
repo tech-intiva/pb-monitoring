@@ -102,11 +102,11 @@ export function AudioManager() {
   }, [muted]);
 
   useEffect(() => {
-    const handleDeviceError = (event: Event) => {
-      const customEvent = event as CustomEvent<{ ip: string; projectId: string }>;
-      const { ip, projectId } = customEvent.detail;
+    const handleProjectAudioEvaluate = (event: Event) => {
+      const customEvent = event as CustomEvent<{ projectId: string; deviceIps: string[] }>;
+      const { projectId, deviceIps } = customEvent.detail;
 
-      console.log(`[AudioManager] Received device-error event for ${ip} (${projectId})`);
+      console.log('[AudioManager] Evaluate project audio', { projectId, deviceIps });
 
       if (!currentProjectId) {
         console.log('[AudioManager] No active project, skipping');
@@ -123,13 +123,15 @@ export function AudioManager() {
         return;
       }
 
-      if (isAcked(ip)) {
-        console.log(`[AudioManager] Device ${ip} is acknowledged, skipping`);
+      if (isAcked(projectId)) {
+        console.log(`[AudioManager] Project ${projectId} is acknowledged, skipping`);
         return;
       }
 
-      if (isAcked(projectId)) {
-        console.log(`[AudioManager] Project ${projectId} is acknowledged, skipping`);
+      const targetIp = (deviceIps || []).find((candidateIp) => !isAcked(candidateIp));
+
+      if (!targetIp) {
+        console.log('[AudioManager] No alerting device after ack filtering, skipping');
         return;
       }
 
@@ -139,7 +141,7 @@ export function AudioManager() {
       if (timeSinceLastPlay < AUDIO_THROTTLE) {
         const remaining = Math.round((AUDIO_THROTTLE - timeSinceLastPlay) / 1000);
         console.log(`[AudioManager] Throttled - ${remaining}s remaining`);
-        pendingAlertsRef.current.add(`${projectId}:${ip}`);
+        pendingAlertsRef.current.add(`${projectId}:${targetIp}`);
         return;
       }
 
@@ -163,7 +165,7 @@ export function AudioManager() {
         audio.currentTime = 0;
         audio.play()
           .then(() => {
-            console.log(`[AudioManager] Playing ${soundKey} alert`);
+            console.log(`[AudioManager] Playing ${soundKey} alert for ${projectId}`);
             lastPlayedRef.current = now;
             pendingAlertsRef.current.clear();
           })
@@ -181,12 +183,12 @@ export function AudioManager() {
       }
     };
 
-    console.log('[AudioManager] Registering device-error event listener');
-    window.addEventListener('device-error', handleDeviceError);
+    console.log('[AudioManager] Registering project-audio-evaluate event listener');
+    window.addEventListener('project-audio-evaluate', handleProjectAudioEvaluate);
 
     return () => {
-      console.log('[AudioManager] Unregistering device-error event listener');
-      window.removeEventListener('device-error', handleDeviceError);
+      console.log('[AudioManager] Unregistering project-audio-evaluate event listener');
+      window.removeEventListener('project-audio-evaluate', handleProjectAudioEvaluate);
     };
   }, [muted, isAcked, currentProjectId]);
 
