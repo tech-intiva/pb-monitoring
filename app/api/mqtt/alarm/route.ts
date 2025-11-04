@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mqtt from 'mqtt';
-import { MQTT_CONFIG } from '@/lib/mqtt-config';
+import { TASMOTA_CONFIG } from '@/lib/mqtt-config';
 
 export async function POST(request: NextRequest) {
   try {
     const { action } = await request.json();
+
+    console.log('[Tasmota API] Received request', { action });
 
     if (action !== 'on' && action !== 'off') {
       return NextResponse.json(
@@ -13,61 +14,54 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const client = mqtt.connect(MQTT_CONFIG.broker, {
-      username: MQTT_CONFIG.username,
-      password: MQTT_CONFIG.password,
-    });
+    const command = action === 'on' ? 'ON' : 'OFF';
+    const url = `${TASMOTA_CONFIG.deviceUrl}/cm?cmnd=POWER%20${command}`;
 
-    return new Promise<NextResponse>((resolve) => {
-      const timeout = setTimeout(() => {
-        client.end(true);
-        resolve(
-          NextResponse.json(
-            { error: 'connection timeout' },
-            { status: 504 }
-          )
-        );
-      }, 10000);
+    console.log('[Tasmota API] Sending HTTP request', { url, command });
 
-      client.on('connect', () => {
-        clearTimeout(timeout);
-        const command = action === 'on' ? 'ON' : 'OFF';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-        client.publish(MQTT_CONFIG.tasmotaTopic, command, (err) => {
-          client.end();
-
-          if (err) {
-            resolve(
-              NextResponse.json(
-                { error: err.message },
-                { status: 500 }
-              )
-            );
-          } else {
-            resolve(
-              NextResponse.json({
-                success: true,
-                action,
-                topic: MQTT_CONFIG.tasmotaTopic,
-                command,
-              })
-            );
-          }
-        });
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        signal: controller.signal,
       });
 
-      client.on('error', (err) => {
-        clearTimeout(timeout);
-        client.end(true);
-        resolve(
-          NextResponse.json(
-            { error: err.message },
-            { status: 500 }
-          )
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.log('[Tasmota API] ❌ HTTP error', { status: response.status });
+        return NextResponse.json(
+          { error: `HTTP ${response.status}` },
+          { status: response.status }
         );
+      }
+
+      const data = await response.json();
+      console.log('[Tasmota API] ✅ Command sent successfully', { action, command, response: data });
+
+      return NextResponse.json({
+        success: true,
+        action,
+        command,
+        response: data,
       });
-    });
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.log('[Tasmota API] ❌ Request timeout');
+        return NextResponse.json(
+          { error: 'request timeout' },
+          { status: 504 }
+        );
+      }
+
+      throw fetchError;
+    }
   } catch (error) {
+    console.log('[Tasmota API] ❌ Unexpected error', { error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'unknown error' },
       { status: 500 }

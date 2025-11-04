@@ -62,7 +62,8 @@ export function Dashboard() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('stop-audio'));
 
-      // turn off mqtt alarm
+      // turn off tasmota alarm
+      console.log('[Dashboard] 🔕 Tasmota Alarm OFF - switching slide/stopping audio');
       fetch('/api/mqtt/alarm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,7 +209,8 @@ export function Dashboard() {
     audioEvaluationRef.current = evaluationKey;
 
     if (alertDevices.length === 0) {
-      // turn off mqtt alarm when all devices are OK
+      // turn off alarm when all devices are OK
+      console.log('[Dashboard] 🔕 Tasmota Alarm OFF - all devices OK');
       fetch('/api/mqtt/alarm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -239,13 +241,18 @@ export function Dashboard() {
       );
 
       if (errorDevices.length > 0) {
+        console.log('[Dashboard] 🚨 Tasmota Alarm ON - ERROR devices detected', {
+          count: errorDevices.length,
+          devices: errorDevices.map(d => d.ip),
+        });
         fetch('/api/mqtt/alarm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'on' }),
         }).catch(console.error);
       } else {
-        // turn off mqtt if only WARN devices (no ERROR)
+        // turn off alarm if only WARN devices (no ERROR)
+        console.log('[Dashboard] 🔕 Tasmota Alarm OFF - only WARN devices, no ERROR');
         fetch('/api/mqtt/alarm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

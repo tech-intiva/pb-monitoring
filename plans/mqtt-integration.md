@@ -1,7 +1,7 @@
-# tasmota mqtt alarm integration plan
+# tasmota alarm integration plan (HTTP)
 
 ## overview
-trigger external tasmota device via mqtt when devices have ERROR status
+trigger external tasmota device via HTTP when devices have ERROR status
 
 ## behavior
 
@@ -26,62 +26,82 @@ trigger external tasmota device via mqtt when devices have ERROR status
 
 ## implementation steps
 
-### 1. install mqtt library
-```bash
-npm install mqtt
-```
+### 1. no external dependencies needed
+uses built-in `fetch` API for HTTP requests
 
-### 2. create mqtt config
+### 2. create tasmota config
 create `lib/mqtt-config.ts`:
 ```typescript
-export const MQTT_CONFIG = {
-  broker: process.env.MQTT_BROKER_URL || 'mqtt://103.78.25.230:1883',
-  username: process.env.MQTT_USERNAME || 'DVES_USER',
-  password: process.env.MQTT_PASSWORD || '',
-  tasmotaTopic: process.env.TASMOTA_TOPIC || 'cmnd/tasmota_C95BC9/POWER',
+export const TASMOTA_CONFIG = {
+  deviceUrl: process.env.TASMOTA_DEVICE_URL || 'http://103.78.25.230:8080',
 };
 ```
 
-**note**: tasmota mqtt broker runs on port **1883** (not 8080, that's the web interface)
+**note**: uses tasmota HTTP API on port **8080**
 
 ### 3. create api endpoint
 create `app/api/mqtt/alarm/route.ts`:
 - accepts POST with `{ action: 'on' | 'off' }`
-- connects to mqtt broker at `103.78.25.230:8080`
-- publishes 'ON' or 'OFF' to tasmota topic
+- sends HTTP GET to tasmota device at `103.78.25.230:8080`
+- uses tasmota command API: `/cm?cmnd=POWER%20ON` or `POWER%20OFF`
 - returns success/error response
 
 ```typescript
 import { NextRequest, NextResponse } from 'next/server';
-import mqtt from 'mqtt';
-import { MQTT_CONFIG } from '@/lib/mqtt-config';
+import { TASMOTA_CONFIG } from '@/lib/mqtt-config';
 
 export async function POST(request: NextRequest) {
   try {
-    const { action } = await request.json(); // 'on' or 'off'
+    const { action } = await request.json();
 
-    const client = mqtt.connect(MQTT_CONFIG.broker, {
-      username: MQTT_CONFIG.username,
-      password: MQTT_CONFIG.password,
-    });
+    if (action !== 'on' && action !== 'off') {
+      return NextResponse.json(
+        { error: 'invalid action, must be "on" or "off"' },
+        { status: 400 }
+      );
+    }
 
-    return new Promise<NextResponse>((resolve) => {
-      client.on('connect', () => {
-        const command = action === 'on' ? 'ON' : 'OFF';
-        client.publish(MQTT_CONFIG.tasmotaTopic, command, (err) => {
-          client.end();
-          if (err) {
-            resolve(NextResponse.json({ error: err.message }, { status: 500 }));
-          } else {
-            resolve(NextResponse.json({ success: true }));
-          }
-        });
+    const command = action === 'on' ? 'ON' : 'OFF';
+    const url = `${TASMOTA_CONFIG.deviceUrl}/cm?cmnd=POWER%20${command}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        signal: controller.signal,
       });
 
-      client.on('error', (err) => {
-        resolve(NextResponse.json({ error: err.message }, { status: 500 }));
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        return NextResponse.json(
+          { error: `HTTP ${response.status}` },
+          { status: response.status }
+        );
+      }
+
+      const data = await response.json();
+
+      return NextResponse.json({
+        success: true,
+        action,
+        command,
+        response: data,
       });
-    });
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        return NextResponse.json(
+          { error: 'request timeout' },
+          { status: 504 }
+        );
+      }
+
+      throw fetchError;
+    }
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'unknown error' },
@@ -141,39 +161,38 @@ const dispatchStopAudio = useCallback(() => {
 }, []);
 ```
 
-this ensures mqtt alarm stops when:
+this ensures alarm stops when:
 - switching to another project/slide (auto-rotate or manual navigation)
 - project list changes
-- all devices become OK (alertDevices becomes empty, no event dispatched)
+- all devices become OK
 
 ### 5. env configuration
 add to `.env.production`:
 ```
-MQTT_BROKER_URL=mqtt://103.78.25.230:1883
-MQTT_USERNAME=DVES_USER
-MQTT_PASSWORD=<password from tasmota>
-TASMOTA_TOPIC=cmnd/tasmota_C95BC9/POWER
+TASMOTA_DEVICE_URL=http://103.78.25.230:8080
 ```
 
 **device info**:
 - device: Sonoff Basic
-- web interface: http://103.78.25.230:8080
-- mqtt port: 1883
-- topic: tasmota_C95BC9
+- HTTP API: http://103.78.25.230:8080
+- command endpoint: /cm?cmnd=POWER%20[ON|OFF]
 
 ## testing steps
 
-### 1. test mqtt connection
+### 1. test HTTP connection
 ```bash
-# test turning on
+# test via API endpoint
 curl -X POST http://localhost:3000/api/mqtt/alarm \
   -H "Content-Type: application/json" \
   -d '{"action":"on"}'
 
-# test turning off
 curl -X POST http://localhost:3000/api/mqtt/alarm \
   -H "Content-Type: application/json" \
   -d '{"action":"off"}'
+
+# OR test directly via python script
+python test-mqtt-alarm.py on
+python test-mqtt-alarm.py off
 ```
 
 ### 2. test with device ERROR
@@ -191,20 +210,22 @@ curl -X POST http://localhost:3000/api/mqtt/alarm \
 - alarm should stop (via dispatchStopAudio flow)
 
 ## implementation checklist
-- [ ] install mqtt package
-- [ ] create `lib/mqtt-config.ts`
-- [ ] create `app/api/mqtt/alarm/route.ts`
-- [ ] update dashboard.tsx line ~221 (trigger alarm)
-- [ ] update dashboard.tsx line ~61 (stop alarm)
+- [x] no external packages needed (uses built-in fetch)
+- [x] create `lib/mqtt-config.ts` (now TASMOTA_CONFIG)
+- [x] create `app/api/mqtt/alarm/route.ts` (uses HTTP)
+- [x] update dashboard.tsx line ~221 (trigger alarm)
+- [x] update dashboard.tsx line ~61 (stop alarm)
 - [ ] add env variables to `.env.production`
-- [ ] test mqtt connection
+- [ ] test HTTP connection
 - [ ] test ERROR trigger
 - [ ] test slide switching
-- [ ] test WARN (no mqtt)
+- [ ] test WARN (no alarm)
 
 ## notes
-- mqtt calls are async (fire and forget with .catch)
-- only ERROR status triggers mqtt alarm
-- WARN status only plays sound, no mqtt trigger
+- HTTP requests are async (fire and forget with .catch)
+- only ERROR status triggers alarm
+- WARN status only plays sound, no alarm trigger
 - alarm behavior mirrors audio manager exactly
 - `projectDevicesList` already available in scope at line ~221
+- uses Tasmota HTTP command API instead of MQTT for simplicity
+- no external dependencies required
