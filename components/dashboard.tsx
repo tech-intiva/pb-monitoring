@@ -61,6 +61,13 @@ export function Dashboard() {
   const dispatchStopAudio = useCallback(() => {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('stop-audio'));
+
+      // turn off mqtt alarm
+      fetch('/api/mqtt/alarm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'off' }),
+      }).catch(console.error);
     }
   }, []);
 
@@ -201,6 +208,12 @@ export function Dashboard() {
     audioEvaluationRef.current = evaluationKey;
 
     if (alertDevices.length === 0) {
+      // turn off mqtt alarm when all devices are OK
+      fetch('/api/mqtt/alarm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'off' }),
+      }).catch(console.error);
       return;
     }
 
@@ -219,6 +232,26 @@ export function Dashboard() {
           },
         })
       );
+
+      // trigger mqtt alarm only for ERROR devices
+      const errorDevices = projectDevicesList.filter(
+        (device) => device.status === 'ERROR'
+      );
+
+      if (errorDevices.length > 0) {
+        fetch('/api/mqtt/alarm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'on' }),
+        }).catch(console.error);
+      } else {
+        // turn off mqtt if only WARN devices (no ERROR)
+        fetch('/api/mqtt/alarm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'off' }),
+        }).catch(console.error);
+      }
     }
   }, [currentProject?.id, devices]);
 
