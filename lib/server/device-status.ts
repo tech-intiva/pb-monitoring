@@ -1,6 +1,7 @@
 "use server";
 
 import { DeviceStatus, DeviceStatusResponse } from "@/types";
+import { getDeviceCount } from "@/lib/device-counts";
 
 const REQUEST_TIMEOUT = 30000; // 30 seconds
 
@@ -33,9 +34,11 @@ export async function fetchDeviceStatusFromDevice(ip: string): Promise<{
 
     const data: DeviceStatusResponse = await response.json();
     const totalOnline = data.data[data.data.length - 1]?.total_online ?? 0;
+    const totalDevices = getDeviceCount(ip);
+    const offlineDevices = totalDevices - totalOnline;
 
     const status: DeviceStatus =
-      totalOnline === 0 ? "ERROR" : totalOnline < 5 ? "WARN" : "OK";
+      totalOnline === 0 ? "ERROR" : offlineDevices >= 5 ? "WARN" : "OK";
 
     return {
       status,
