@@ -45,3 +45,28 @@
     transform: translateX(100%);
   }
 }
+
+@layer utilities {
+  .scroll-elegant {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(59, 130, 246, 0.45) transparent;
+  }
+
+  .scroll-elegant::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scroll-elegant::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scroll-elegant::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.45);
+    border-radius: 9999px;
+  }
+
+  .scroll-elegant::-webkit-scrollbar-thumb:hover {
+    background: rgba(59, 130, 246, 0.65);
+  }
+}
